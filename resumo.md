@@ -3,9 +3,9 @@
 - **Preço médio por adulto (histórico completo):** R$ 658,00
 - **Preço mais baixo já encontrado:** R$ 658,00 (em 2026-08-26) — [ver oferta/busca](https://www.kayak.com.br/flights/GYN-FLN/2026-11-26/2026-11-30/2adults)
 - **Preço mais alto já encontrado:** R$ 658,00 (em 2026-08-26)
-- **Número total de consultas registradas:** 3
+- **Número total de consultas registradas:** 4
 - **Link da consulta mais recente:** https://www.kayak.com.br/flights/GYN-FLN/2026-11-26/2026-11-30/2adults
-- **Última atualização:** 2026-08-26 20:11 (horário de Brasília)
+- **Última atualização:** 2026-08-27 03:19 (horário de Brasília)
 
 ## Meta do usuário
 
