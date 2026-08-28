@@ -20,9 +20,15 @@ from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PWTimeout
+from playwright_stealth import stealth_sync
 
 from config import ADULTS, DEPART_DATE, RETURN_DATE
 from scrapers import debug_utils
+
+USER_AGENT = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+)
 
 ROUTE_URL = (
     "https://www.decolar.com/passagens-aereas/gyn/fln/"
@@ -114,14 +120,25 @@ def _extract_price_from_title(page):
 
 def buscar(playwright) -> dict | None:
     browser = playwright.chromium.launch(headless=True)
-    context = browser.new_context(locale="pt-BR", timezone_id="America/Sao_Paulo")
+    context = browser.new_context(
+        locale="pt-BR",
+        timezone_id="America/Sao_Paulo",
+        user_agent=USER_AGENT,
+        viewport={"width": 1366, "height": 900},
+    )
     page = context.new_page()
+    stealth_sync(page)
 
     try:
         _log(f"abrindo {ROUTE_URL}")
         page.goto(ROUTE_URL, timeout=45000, wait_until="domcontentloaded")
-        page.wait_for_timeout(3000)
+        try:
+            page.wait_for_load_state("networkidle", timeout=20000)
+        except PWTimeout:
+            _log("networkidle não atingido em 20s, seguindo mesmo assim")
+        page.wait_for_timeout(4000)
         _log(f"página carregada, título inicial: {page.title()!r}")
+        _log(f"tamanho do HTML carregado: {len(page.content())} caracteres")
         _accept_cookies(page)
         page.wait_for_timeout(1000)
 
@@ -151,8 +168,9 @@ def buscar(playwright) -> dict | None:
         _log("tentando piso genérico do <title> da página da rota")
 
         page2 = context.new_page()
+        stealth_sync(page2)
         page2.goto(ROUTE_URL, timeout=30000, wait_until="domcontentloaded")
-        page2.wait_for_timeout(2000)
+        page2.wait_for_timeout(3000)
         preco_piso = _extract_price_from_title(page2)
         link_piso = page2.url
         if not preco_piso:

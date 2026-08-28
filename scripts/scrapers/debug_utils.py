@@ -21,7 +21,7 @@ def dump(page, debug_dir: Path, tag: str, log) -> None:
         log(f"falha ao salvar debug: {exc}")
 
 
-def diagnostico(page, log, max_items: int = 50) -> None:
+def diagnostico(page, log, max_items: int = 90) -> None:
     """Imprime nos logs os elementos interativos visíveis da página atual."""
     try:
         log(f"URL atual: {page.url}")

@@ -80,31 +80,50 @@ def _months_ahead(target_iso: str) -> int:
     return max((y - today.year) * 12 + (m - today.month), 0)
 
 
-def _pick_date(page, iso_date: str, field_label: str) -> bool:
-    y, m, d = (int(x) for x in iso_date.split("-"))
+def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
+    """Abre o calendário e seleciona ida/volta.
+
+    Baseado em diagnóstico real: o calendário do Google Flights mostra dois
+    meses simultaneamente e as células de dia são botões cujo nome
+    acessível é literalmente "{dia}\\n{preço}" (sem mês/ano). Não existe um
+    botão "Next month" clicável por role -- a navegação de mês é feita via
+    teclado (PageDown), seguindo o padrão ARIA de date pickers.
+    """
     try:
-        page.get_by_role("textbox", name=re.compile(field_label, re.I)).first.click(timeout=8000)
+        page.get_by_role("textbox", name=re.compile("Departure", re.I)).first.click(timeout=12000)
     except PWTimeout:
-        _log(f"não consegui abrir o calendário via campo '{field_label}'")
+        _log("não consegui abrir o calendário via campo 'Departure'")
         return False
 
-    clicks_needed = _months_ahead(iso_date)
-    for _ in range(clicks_needed):
-        try:
-            page.get_by_role("button", name=re.compile(r"Next month|Go to next month", re.I)).first.click(timeout=4000)
-            page.wait_for_timeout(300)
-        except PWTimeout:
-            _log("botão 'próximo mês' não encontrado durante navegação do calendário")
-            return False
+    # como o calendário mostra 2 meses de uma vez, 1 PageDown já avança a
+    # janela em 1 mês -- por isso -1 em relação à distância total de meses.
+    paginas = max(_months_ahead(depart_iso) - 1, 0)
+    for _ in range(paginas):
+        page.keyboard.press("PageDown")
+        page.wait_for_timeout(400)
+    if paginas:
+        _log(f"calendário paginado {paginas}x via teclado (PageDown) em direção a {depart_iso}")
 
-    day_pattern = re.compile(rf"\b{d}\b.*\b{y}\b", re.I)
+    dia_ida = int(depart_iso.split("-")[2])
+    dia_volta = int(return_iso.split("-")[2])
+
+    padrao_ida = re.compile(rf"^{dia_ida}\D")
     try:
-        page.get_by_role("button", name=day_pattern).first.click(timeout=6000)
-        _log(f"data {iso_date} selecionada no campo '{field_label}'")
-        return True
+        page.get_by_role("button", name=padrao_ida).first.click(timeout=8000)
+        _log(f"dia de ida ({depart_iso}) selecionado")
     except PWTimeout:
-        _log(f"não encontrei o dia {iso_date} no calendário")
+        _log(f"não encontrei o botão do dia de ida ({dia_ida}) no calendário após paginar")
         return False
+
+    padrao_volta = re.compile(rf"^{dia_volta}\D")
+    try:
+        page.get_by_role("button", name=padrao_volta).first.click(timeout=8000)
+        _log(f"dia de volta ({return_iso}) selecionado")
+    except PWTimeout:
+        _log(f"não encontrei o botão do dia de volta ({dia_volta}) no calendário")
+        return False
+
+    return True
 
 
 def buscar(playwright) -> dict | None:
@@ -129,9 +148,7 @@ def buscar(playwright) -> dict | None:
 
         _set_passengers(page, ADULTS)
 
-        ok_ida = _pick_date(page, DEPART_DATE, "Departure")
-        ok_volta = _pick_date(page, RETURN_DATE, "Return")
-        if not (ok_ida and ok_volta):
+        if not _select_dates(page, DEPART_DATE, RETURN_DATE):
             _fail(page, "falha_selecao_datas")
             return None
 
