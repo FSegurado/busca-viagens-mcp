@@ -118,14 +118,54 @@ def _occurrence_index(today: date, target_iso: str) -> int:
     return idx
 
 
-def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
-    """Abre o calendário e seleciona ida/volta.
+def _fmt_us(iso: str) -> str:
+    y, m, d = (int(x) for x in iso.split("-"))
+    return f"{m}/{d}/{y}"
 
-    Baseado em diagnóstico real: o calendário do Google Flights mostra dois
-    meses simultaneamente e as células de dia são botões cujo nome
-    acessível é literalmente "{dia}\\n{preço}" (sem mês/ano). Não existe um
-    botão "Next month" clicável por role -- a navegação de mês é feita via
-    teclado (PageDown), seguindo o padrão ARIA de date pickers.
+
+def _select_dates_by_typing(page, depart_iso: str, return_iso: str) -> bool:
+    """Estratégia primária: digitar a data direto nos <input> Departure/Return.
+
+    Mais robusto do que navegar o calendário e clicar em células (ver
+    _select_dates_by_calendar) -- evita toda a complicação de paginação
+    assíncrona e ambiguidade de dias repetidos entre meses.
+    """
+    try:
+        campo_ida = page.get_by_role("textbox", name=re.compile("Departure", re.I)).first
+        campo_ida.click(timeout=12000)
+        campo_ida.press_sequentially(_fmt_us(depart_iso), delay=60)
+        page.wait_for_timeout(500)
+
+        campo_volta = page.get_by_role("textbox", name=re.compile("Return", re.I)).first
+        campo_volta.click(timeout=8000)
+        campo_volta.press_sequentially(_fmt_us(return_iso), delay=60)
+        page.wait_for_timeout(500)
+        page.keyboard.press("Enter")
+        page.wait_for_timeout(1000)
+    except Exception as exc:
+        _log(f"digitação direta de datas falhou: {exc}")
+        return False
+
+    # confirma que os campos realmente refletem as datas digitadas
+    try:
+        texto_ida = page.get_by_role("textbox", name=re.compile("Departure", re.I)).first.input_value()
+        texto_volta = page.get_by_role("textbox", name=re.compile("Return", re.I)).first.input_value()
+    except Exception:
+        texto_ida = texto_volta = ""
+    _log(f"após digitação: campo ida={texto_ida!r} campo volta={texto_volta!r}")
+
+    dia_ida = str(int(depart_iso.split('-')[2]))
+    dia_volta = str(int(return_iso.split('-')[2]))
+    return dia_ida in texto_ida and dia_volta in texto_volta
+
+
+def _select_dates_by_calendar(page, depart_iso: str, return_iso: str) -> bool:
+    """Fallback: navega o calendário via teclado e clica nas células de dia.
+
+    Baseado em diagnóstico real: os botões de dia têm nome acessível
+    "{dia}\\n{preço}" (sem mês/ano) e o calendário ACUMULA meses (cada
+    PageDown soma mais um mês, sem descartar os anteriores) -- por isso
+    calculamos em qual ocorrência (.nth) do dígito do dia cai o mês certo.
     """
     try:
         page.get_by_role("textbox", name=re.compile("Departure", re.I)).first.click(timeout=12000)
@@ -133,37 +173,23 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
         _log("não consegui abrir o calendário via campo 'Departure'")
         return False
 
-    # o calendário ACUMULA meses (cada PageDown revela mais um mês, sem
-    # descartar os anteriores) -- por isso paginamos o suficiente para
-    # garantir que o mês alvo esteja renderizado, com folga de 1 mês.
     paginas = _months_ahead(depart_iso) + 1
     for _ in range(paginas):
         page.keyboard.press("PageDown")
-        page.wait_for_timeout(1200)
+        page.wait_for_timeout(1500)
     if paginas:
         _log(f"calendário paginado {paginas}x via teclado (PageDown) em direção a {depart_iso}")
-
-    # dá tempo dos preços da(s) nova(s) coluna(s) de mês carregarem (são
-    # buscados de forma assíncrona pelo Google Flights)
-    page.wait_for_timeout(1500)
-
-    mes_nome_ida = date.fromisoformat(depart_iso).strftime("%B")
-    corpo = page.inner_text("body")
-    _log(f"mês '{mes_nome_ida}' visível na página após paginação: {mes_nome_ida in corpo}")
+    page.wait_for_timeout(2000)
 
     hoje = date.today()
     dia_ida = int(depart_iso.split("-")[2])
     dia_volta = int(return_iso.split("-")[2])
 
-    # o nome acessível do botão de dia é "{dia}" (sem preço carregado) ou
-    # "{dia}\n{preço}" (com preço) -- por isso aceita fim de string OU não-dígito.
-    # "26" se repete uma vez por mês visível (o calendário acumula meses, não
-    # é uma janela deslizante), então usamos a ocorrência calculada, não .first.
     idx_ida = _occurrence_index(hoje, depart_iso)
     padrao_ida = re.compile(rf"^{dia_ida}(\D|$)")
     _log(f"clicando na ocorrência #{idx_ida} do dia {dia_ida} (deve corresponder a {depart_iso})")
     try:
-        page.get_by_role("button", name=padrao_ida).nth(idx_ida).click(timeout=8000)
+        page.get_by_role("button", name=padrao_ida).nth(idx_ida).click(timeout=10000)
         _log(f"dia de ida ({depart_iso}) selecionado")
     except PWTimeout:
         _log(f"não encontrei a ocorrência #{idx_ida} do dia de ida ({dia_ida}) no calendário após paginar")
@@ -173,13 +199,21 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
     padrao_volta = re.compile(rf"^{dia_volta}(\D|$)")
     _log(f"clicando na ocorrência #{idx_volta} do dia {dia_volta} (deve corresponder a {return_iso})")
     try:
-        page.get_by_role("button", name=padrao_volta).nth(idx_volta).click(timeout=8000)
+        page.get_by_role("button", name=padrao_volta).nth(idx_volta).click(timeout=10000)
         _log(f"dia de volta ({return_iso}) selecionado")
     except PWTimeout:
         _log(f"não encontrei a ocorrência #{idx_volta} do dia de volta ({dia_volta}) no calendário")
         return False
 
     return True
+
+
+def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
+    if _select_dates_by_typing(page, depart_iso, return_iso):
+        _log("datas selecionadas via digitação direta nos campos")
+        return True
+    _log("digitação direta não confirmou as datas -- tentando fallback via calendário")
+    return _select_dates_by_calendar(page, depart_iso, return_iso)
 
 
 def buscar(playwright) -> dict | None:
