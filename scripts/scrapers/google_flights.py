@@ -100,14 +100,24 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
     paginas = max(_months_ahead(depart_iso) - 1, 0)
     for _ in range(paginas):
         page.keyboard.press("PageDown")
-        page.wait_for_timeout(400)
+        page.wait_for_timeout(1200)
     if paginas:
         _log(f"calendário paginado {paginas}x via teclado (PageDown) em direção a {depart_iso}")
+
+    # dá tempo dos preços da(s) nova(s) coluna(s) de mês carregarem (são
+    # buscados de forma assíncrona pelo Google Flights)
+    page.wait_for_timeout(1500)
+
+    mes_nome_ida = date.fromisoformat(depart_iso).strftime("%B")
+    corpo = page.inner_text("body")
+    _log(f"mês '{mes_nome_ida}' visível na página após paginação: {mes_nome_ida in corpo}")
 
     dia_ida = int(depart_iso.split("-")[2])
     dia_volta = int(return_iso.split("-")[2])
 
-    padrao_ida = re.compile(rf"^{dia_ida}\D")
+    # o nome acessível do botão de dia é "{dia}" (sem preço carregado) ou
+    # "{dia}\n{preço}" (com preço) -- por isso aceita fim de string OU não-dígito.
+    padrao_ida = re.compile(rf"^{dia_ida}(\D|$)")
     try:
         page.get_by_role("button", name=padrao_ida).first.click(timeout=8000)
         _log(f"dia de ida ({depart_iso}) selecionado")
@@ -115,7 +125,7 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
         _log(f"não encontrei o botão do dia de ida ({dia_ida}) no calendário após paginar")
         return False
 
-    padrao_volta = re.compile(rf"^{dia_volta}\D")
+    padrao_volta = re.compile(rf"^{dia_volta}(\D|$)")
     try:
         page.get_by_role("button", name=padrao_volta).first.click(timeout=8000)
         _log(f"dia de volta ({return_iso}) selecionado")

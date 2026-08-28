@@ -139,6 +139,11 @@ def buscar(playwright) -> dict | None:
         page.wait_for_timeout(4000)
         _log(f"página carregada, título inicial: {page.title()!r}")
         _log(f"tamanho do HTML carregado: {len(page.content())} caracteres")
+        try:
+            webdriver_flag = page.evaluate("navigator.webdriver")
+            _log(f"navigator.webdriver reportado pelo browser: {webdriver_flag!r} (deveria ser False/undefined com stealth ativo)")
+        except Exception as exc:
+            _log(f"não consegui checar navigator.webdriver: {exc}")
         _accept_cookies(page)
         page.wait_for_timeout(1000)
 
