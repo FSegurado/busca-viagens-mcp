@@ -43,16 +43,28 @@ def _accept_cookies(page) -> None:
 
 
 def _fill_airport(page, field_label: str, city: str) -> bool:
+    # o campo é um widget de autocomplete customizado, não um <input> puro:
+    # .fill() nem sempre dispara os listeners internos que abrem a lista de
+    # sugestões. Digitar caractere a caractere (press_sequentially) simula
+    # teclado de verdade e é bem mais confiável aqui.
     try:
         box = page.get_by_role("combobox", name=re.compile(field_label, re.I)).first
         box.click(timeout=12000)
-        box.fill(city)
-        page.wait_for_timeout(1500)
+    except PWTimeout:
+        _log(f"não consegui clicar no campo '{field_label}'")
+        return False
+    try:
+        box.press_sequentially(city, delay=80)
+    except Exception as exc:
+        _log(f"não consegui digitar em '{field_label}': {exc}")
+        return False
+    try:
+        page.wait_for_timeout(1200)
         page.get_by_role("option").first.click(timeout=8000)
         _log(f"campo '{field_label}' preenchido com '{city}'")
         return True
     except PWTimeout:
-        _log(f"não consegui preencher o campo '{field_label}' com '{city}'")
+        _log(f"digitei '{city}' em '{field_label}' mas nenhuma sugestão apareceu para clicar")
         return False
 
 
