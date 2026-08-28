@@ -260,16 +260,21 @@ def buscar(playwright) -> dict | None:
         n = candidatos.count()
         _log(f"{n} itens de resultado encontrados na lista")
 
-        texto_fonte = ""
+        texto_resultados = ""
         if n > 0:
             for i in range(min(n, 20)):
-                texto_fonte += " " + candidatos.nth(i).inner_text()
+                texto_resultados += " " + candidatos.nth(i).inner_text()
         else:
-            texto_fonte = page.inner_text("body")
+            texto_resultados = page.inner_text("body")
+
+        # o aviso sobre a base do preço (por passageiro vs total) costuma
+        # ficar fora dos cartões de resultado (legenda/rodapé), por isso
+        # checamos o texto da página inteira, não só dos [role=listitem].
+        texto_pagina = page.inner_text("body")
 
         precos = [
             float(p.replace(".", "").replace(",", "."))
-            for p in re.findall(r"R\$\s?([\d.,]+)", texto_fonte)
+            for p in re.findall(r"R\$\s?([\d.,]+)", texto_resultados)
         ]
         precos = [p for p in precos if p > 50]  # filtra ruído tipo taxas pequenas
 
@@ -279,7 +284,13 @@ def buscar(playwright) -> dict | None:
             return None
 
         menor = min(precos)
-        por_passageiro = "per traveler" in texto_fonte.lower() or "por passageiro" in texto_fonte.lower()
+        # Google Flights mostra preço POR PASSAGEIRO por padrão quando há
+        # mais de 1 passageiro selecionado -- esse é o default assumido
+        # aqui; só tratamos como total se a própria página disser isso
+        # explicitamente (bem mais raro).
+        texto_lower = texto_pagina.lower()
+        eh_total_explicito = "total price" in texto_lower or "preço total" in texto_lower
+        por_passageiro = not eh_total_explicito
         preco_por_adulto = menor if por_passageiro else round(menor / ADULTS, 2)
         preco_total = round(preco_por_adulto * ADULTS, 2)
 
