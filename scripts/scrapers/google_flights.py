@@ -3,34 +3,33 @@
 IMPORTANTE: seletores baseados em padrões conhecidos da UI do Google Flights
 (aria-labels em inglês, forçado via hl=en). Como este script roda apenas no
 runner do GitHub Actions -- sem acesso a partir do ambiente de
-desenvolvimento -- é esperado que precise de ajustes após os primeiros
-execuções reais; por isso cada etapa loga o que está fazendo e, em caso de
-falha, salva screenshot + HTML em artifacts/google_flights/ para inspeção.
+desenvolvimento -- é esperado que precise de ajustes após as primeiras
+execuções reais. Por isso cada etapa loga o que está fazendo e, em caso de
+falha, chama debug_utils.diagnostico() para imprimir nos LOGS do job (não em
+artifact -- o storage de artifacts não é alcançável a partir daqui) os
+elementos interativos realmente presentes na página.
 """
 import re
+import sys
 from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PWTimeout
 
 from config import ADULTS, DEPART_DATE, DEST_CITY, ORIGIN_CITY, RETURN_DATE
+from scrapers import debug_utils
 
 BASE_URL = "https://www.google.com/travel/flights?hl=en&curr=BRL&gl=BR"
 DEBUG_DIR = Path("artifacts/google_flights")
 
 
 def _log(msg: str) -> None:
-    print(f"[google_flights] {msg}")
+    print(f"[google_flights] {msg}", flush=True)
 
 
-def _dump(page, tag: str) -> None:
-    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        page.screenshot(path=str(DEBUG_DIR / f"{tag}.png"), full_page=True)
-        (DEBUG_DIR / f"{tag}.html").write_text(page.content(), encoding="utf-8")
-        _log(f"debug salvo em {DEBUG_DIR}/{tag}.(png|html)")
-    except Exception as exc:
-        _log(f"falha ao salvar debug: {exc}")
+def _fail(page, tag: str) -> None:
+    debug_utils.dump(page, DEBUG_DIR, tag, _log)
+    debug_utils.diagnostico(page, _log)
 
 
 def _accept_cookies(page) -> None:
@@ -46,7 +45,7 @@ def _accept_cookies(page) -> None:
 def _fill_airport(page, field_label: str, city: str) -> bool:
     try:
         box = page.get_by_role("combobox", name=re.compile(field_label, re.I)).first
-        box.click(timeout=8000)
+        box.click(timeout=12000)
         box.fill(city)
         page.wait_for_timeout(1500)
         page.get_by_role("option").first.click(timeout=8000)
@@ -116,13 +115,16 @@ def buscar(playwright) -> dict | None:
     try:
         _log(f"abrindo {BASE_URL}")
         page.goto(BASE_URL, timeout=45000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
+        _log(f"página carregada, título inicial: {page.title()!r}")
         _accept_cookies(page)
+        page.wait_for_timeout(1000)
 
         ok_origem = _fill_airport(page, "Where from", ORIGIN_CITY)
         ok_destino = _fill_airport(page, "Where to", DEST_CITY)
         if not (ok_origem and ok_destino):
-            _dump(page, "falha_preenchimento_aeroportos")
+            _log("falha ao preencher aeroportos -- rodando diagnóstico")
+            _fail(page, "falha_preenchimento_aeroportos")
             return None
 
         _set_passengers(page, ADULTS)
@@ -130,7 +132,7 @@ def buscar(playwright) -> dict | None:
         ok_ida = _pick_date(page, DEPART_DATE, "Departure")
         ok_volta = _pick_date(page, RETURN_DATE, "Return")
         if not (ok_ida and ok_volta):
-            _dump(page, "falha_selecao_datas")
+            _fail(page, "falha_selecao_datas")
             return None
 
         try:
@@ -151,7 +153,6 @@ def buscar(playwright) -> dict | None:
         n = candidatos.count()
         _log(f"{n} itens de resultado encontrados na lista")
 
-        precos = []
         texto_fonte = ""
         if n > 0:
             for i in range(min(n, 20)):
@@ -167,7 +168,7 @@ def buscar(playwright) -> dict | None:
 
         if not precos:
             _log("nenhum preço em R$ encontrado no texto dos resultados")
-            _dump(page, "sem_preco")
+            _fail(page, "sem_preco")
             return None
 
         menor = min(precos)
@@ -175,7 +176,10 @@ def buscar(playwright) -> dict | None:
         preco_por_adulto = menor if por_passageiro else round(menor / ADULTS, 2)
         preco_total = round(preco_por_adulto * ADULTS, 2)
 
-        _log(f"preço mínimo capturado: R$ {menor:.2f} (interpretado como {'por passageiro' if por_passageiro else 'total, dividido por 2'})")
+        _log(
+            f"preço mínimo capturado: R$ {menor:.2f} "
+            f"(interpretado como {'por passageiro' if por_passageiro else 'total, dividido por 2'})"
+        )
 
         return {
             "preco_por_adulto": round(preco_por_adulto, 2),
@@ -186,17 +190,19 @@ def buscar(playwright) -> dict | None:
             "observacoes": (
                 "Preço extraído via scraping real (Playwright) da página de resultados do Google "
                 f"Flights, com origem/destino/datas/{ADULTS} adultos preenchidos na própria UI. "
-                f"Interpretação do valor exibido como preço {'por passageiro' if por_passageiro else 'total (dividido por 2 adultos)'} "
+                f"Interpretação do valor exibido como preço "
+                f"{'por passageiro' if por_passageiro else 'total (dividido por 2 adultos)'} "
                 "com base no texto da página; confirme no link antes de comprar."
             ),
         }
     except Exception as exc:
-        _log(f"erro inesperado: {exc}")
+        _log(f"erro inesperado: {exc!r}")
         try:
-            _dump(page, "erro_inesperado")
+            _fail(page, "erro_inesperado")
         except Exception:
             pass
         return None
     finally:
+        sys.stdout.flush()
         context.close()
         browser.close()

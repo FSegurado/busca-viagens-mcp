@@ -10,16 +10,19 @@ Estratégia em duas camadas, do mais preciso ao mais confiável:
    texto da própria página da rota -- um piso genérico (não específico das
    datas), mas historicamente estável e fácil de confirmar.
 
-Se as duas falharem, retorna None e loga o motivo. Screenshots/HTML de debug
-são salvos em artifacts/decolar/ quando algo dá errado.
+Se as duas falharem, retorna None e loga o motivo. O diagnóstico (elementos
+interativos reais da página) vai para os LOGS do job via debug_utils --
+artifacts de screenshot não são alcançáveis fora do runner do Actions.
 """
 import re
+import sys
 from datetime import date
 from pathlib import Path
 
 from playwright.sync_api import TimeoutError as PWTimeout
 
-from config import ADULTS, DEPART_DATE, DEST_CODE, ORIGIN_CODE, RETURN_DATE
+from config import ADULTS, DEPART_DATE, RETURN_DATE
+from scrapers import debug_utils
 
 ROUTE_URL = (
     "https://www.decolar.com/passagens-aereas/gyn/fln/"
@@ -29,17 +32,12 @@ DEBUG_DIR = Path("artifacts/decolar")
 
 
 def _log(msg: str) -> None:
-    print(f"[decolar] {msg}")
+    print(f"[decolar] {msg}", flush=True)
 
 
-def _dump(page, tag: str) -> None:
-    DEBUG_DIR.mkdir(parents=True, exist_ok=True)
-    try:
-        page.screenshot(path=str(DEBUG_DIR / f"{tag}.png"), full_page=True)
-        (DEBUG_DIR / f"{tag}.html").write_text(page.content(), encoding="utf-8")
-        _log(f"debug salvo em {DEBUG_DIR}/{tag}.(png|html)")
-    except Exception as exc:
-        _log(f"falha ao salvar debug: {exc}")
+def _fail(page, tag: str) -> None:
+    debug_utils.dump(page, DEBUG_DIR, tag, _log)
+    debug_utils.diagnostico(page, _log)
 
 
 def _accept_cookies(page) -> None:
@@ -61,7 +59,7 @@ def _months_ahead(target_iso: str) -> int:
 def _pick_dates_and_search(page) -> bool:
     """Tenta preencher datas exatas + adultos e disparar a busca. Best effort."""
     try:
-        page.get_by_role("button", name=re.compile(r"data|ida.*volta|calend", re.I)).first.click(timeout=6000)
+        page.get_by_role("button", name=re.compile(r"data|ida.*volta|calend", re.I)).first.click(timeout=8000)
     except PWTimeout:
         _log("não encontrei o campo de datas para abrir o calendário")
         return False
@@ -91,7 +89,7 @@ def _pick_dates_and_search(page) -> bool:
     return True
 
 
-def _extract_price_from_results(page) -> float | None:
+def _extract_price_from_results(page):
     try:
         page.wait_for_selector("text=/R\\$\\s?[\\d.,]+/", timeout=25000)
     except PWTimeout:
@@ -106,7 +104,7 @@ def _extract_price_from_results(page) -> float | None:
     return min(precos) if precos else None
 
 
-def _extract_price_from_title(page) -> float | None:
+def _extract_price_from_title(page):
     titulo = page.title()
     m = re.search(r"R\$\s?([\d.,]+)", titulo)
     if not m:
@@ -122,13 +120,17 @@ def buscar(playwright) -> dict | None:
     try:
         _log(f"abrindo {ROUTE_URL}")
         page.goto(ROUTE_URL, timeout=45000, wait_until="domcontentloaded")
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(3000)
+        _log(f"página carregada, título inicial: {page.title()!r}")
         _accept_cookies(page)
+        page.wait_for_timeout(1000)
 
-        # Camada 1: busca exata com datas e passageiros na UI
         preco_exato = None
         if _pick_dates_and_search(page):
             preco_exato = _extract_price_from_results(page)
+        else:
+            _log("busca com datas exatas falhou na etapa de UI -- rodando diagnóstico")
+            _fail(page, "falha_ui_datas")
 
         if preco_exato:
             preco_por_adulto = round(preco_exato, 2)
@@ -146,14 +148,15 @@ def buscar(playwright) -> dict | None:
                 ),
             }
 
-        _log("busca com datas exatas falhou; tentando piso genérico do <title> da página da rota")
-        _dump(page, "fallback_generico")
+        _log("tentando piso genérico do <title> da página da rota")
 
-        # Camada 2: piso genérico "a partir de R$X" (não específico das datas)
         page2 = context.new_page()
         page2.goto(ROUTE_URL, timeout=30000, wait_until="domcontentloaded")
+        page2.wait_for_timeout(2000)
         preco_piso = _extract_price_from_title(page2)
         link_piso = page2.url
+        if not preco_piso:
+            _fail(page2, "fallback_sem_preco_no_title")
         page2.close()
 
         if not preco_piso:
@@ -169,19 +172,21 @@ def buscar(playwright) -> dict | None:
             "fonte": "Decolar (piso genérico da rota)",
             "link": link_piso,
             "observacoes": (
-                "A busca com datas exatas na UI do Decolar falhou nesta execução (ver artifacts de "
-                "debug no workflow). Valor obtido é o piso 'a partir de R$X' exibido no título da "
-                "página da rota GYN-FLN -- genérico, NÃO específico das datas "
-                f"{DEPART_DATE}/{RETURN_DATE} nem do número de passageiros. Confirme no link antes de comprar."
+                "A busca com datas exatas na UI do Decolar falhou nesta execução (ver logs do job "
+                "para o diagnóstico dos elementos da página). Valor obtido é o piso 'a partir de "
+                "R$X' exibido no título da página da rota GYN-FLN -- genérico, NÃO específico das "
+                f"datas {DEPART_DATE}/{RETURN_DATE} nem do número de passageiros. Confirme no link "
+                "antes de comprar."
             ),
         }
     except Exception as exc:
-        _log(f"erro inesperado: {exc}")
+        _log(f"erro inesperado: {exc!r}")
         try:
-            _dump(page, "erro_inesperado")
+            _fail(page, "erro_inesperado")
         except Exception:
             pass
         return None
     finally:
+        sys.stdout.flush()
         context.close()
         browser.close()

@@ -33,7 +33,9 @@ jobs:
 
       - name: Rodar coleta de preços
         working-directory: scripts
-        run: python main.py
+        env:
+          PYTHONUNBUFFERED: "1"
+        run: python -u main.py
 
       - name: Mostrar resumo no job
         if: always()
