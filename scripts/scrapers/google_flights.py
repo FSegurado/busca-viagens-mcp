@@ -9,6 +9,7 @@ falha, chama debug_utils.diagnostico() para imprimir nos LOGS do job (não em
 artifact -- o storage de artifacts não é alcançável a partir daqui) os
 elementos interativos realmente presentes na página.
 """
+import calendar
 import re
 import sys
 from datetime import date
@@ -92,6 +93,31 @@ def _months_ahead(target_iso: str) -> int:
     return max((y - today.year) * 12 + (m - today.month), 0)
 
 
+def _occurrence_index(today: date, target_iso: str) -> int:
+    """Calcula em qual ocorrência (0-based) do dígito do dia está o botão certo.
+
+    O calendário do Google Flights ACUMULA meses visíveis (não é uma janela
+    deslizante de 2 meses) -- cada PageDown revela mais um mês inteiro (1 a
+    31) além dos já mostrados, e o mês atual só mostra dias a partir de
+    hoje. Como o nome acessível do botão de dia não inclui mês/ano, "26" se
+    repete uma vez por mês visível; a ocorrência certa é a que corresponde
+    ao mês/ano alvo, contando quantos meses anteriores também têm esse dia.
+    """
+    ty, tm, td = (int(x) for x in target_iso.split("-"))
+    idx = 0
+    y, m = today.year, today.month
+    while (y, m) != (ty, tm):
+        is_mes_atual = (y == today.year and m == today.month)
+        dias_no_mes = calendar.monthrange(y, m)[1]
+        if td <= dias_no_mes and (not is_mes_atual or td >= today.day):
+            idx += 1
+        m += 1
+        if m == 13:
+            m = 1
+            y += 1
+    return idx
+
+
 def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
     """Abre o calendário e seleciona ida/volta.
 
@@ -107,9 +133,10 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
         _log("não consegui abrir o calendário via campo 'Departure'")
         return False
 
-    # como o calendário mostra 2 meses de uma vez, 1 PageDown já avança a
-    # janela em 1 mês -- por isso -1 em relação à distância total de meses.
-    paginas = max(_months_ahead(depart_iso) - 1, 0)
+    # o calendário ACUMULA meses (cada PageDown revela mais um mês, sem
+    # descartar os anteriores) -- por isso paginamos o suficiente para
+    # garantir que o mês alvo esteja renderizado, com folga de 1 mês.
+    paginas = _months_ahead(depart_iso) + 1
     for _ in range(paginas):
         page.keyboard.press("PageDown")
         page.wait_for_timeout(1200)
@@ -124,25 +151,32 @@ def _select_dates(page, depart_iso: str, return_iso: str) -> bool:
     corpo = page.inner_text("body")
     _log(f"mês '{mes_nome_ida}' visível na página após paginação: {mes_nome_ida in corpo}")
 
+    hoje = date.today()
     dia_ida = int(depart_iso.split("-")[2])
     dia_volta = int(return_iso.split("-")[2])
 
     # o nome acessível do botão de dia é "{dia}" (sem preço carregado) ou
     # "{dia}\n{preço}" (com preço) -- por isso aceita fim de string OU não-dígito.
+    # "26" se repete uma vez por mês visível (o calendário acumula meses, não
+    # é uma janela deslizante), então usamos a ocorrência calculada, não .first.
+    idx_ida = _occurrence_index(hoje, depart_iso)
     padrao_ida = re.compile(rf"^{dia_ida}(\D|$)")
+    _log(f"clicando na ocorrência #{idx_ida} do dia {dia_ida} (deve corresponder a {depart_iso})")
     try:
-        page.get_by_role("button", name=padrao_ida).first.click(timeout=8000)
+        page.get_by_role("button", name=padrao_ida).nth(idx_ida).click(timeout=8000)
         _log(f"dia de ida ({depart_iso}) selecionado")
     except PWTimeout:
-        _log(f"não encontrei o botão do dia de ida ({dia_ida}) no calendário após paginar")
+        _log(f"não encontrei a ocorrência #{idx_ida} do dia de ida ({dia_ida}) no calendário após paginar")
         return False
 
+    idx_volta = _occurrence_index(hoje, return_iso)
     padrao_volta = re.compile(rf"^{dia_volta}(\D|$)")
+    _log(f"clicando na ocorrência #{idx_volta} do dia {dia_volta} (deve corresponder a {return_iso})")
     try:
-        page.get_by_role("button", name=padrao_volta).first.click(timeout=8000)
+        page.get_by_role("button", name=padrao_volta).nth(idx_volta).click(timeout=8000)
         _log(f"dia de volta ({return_iso}) selecionado")
     except PWTimeout:
-        _log(f"não encontrei o botão do dia de volta ({dia_volta}) no calendário")
+        _log(f"não encontrei a ocorrência #{idx_volta} do dia de volta ({dia_volta}) no calendário")
         return False
 
     return True
