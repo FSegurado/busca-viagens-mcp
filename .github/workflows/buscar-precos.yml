@@ -1,0 +1,64 @@
+name: Buscar preços GYN-FLN
+
+on:
+  schedule:
+    # 03h, 08h, 12h e 20h no horário de Brasília (UTC-3, sem horário de verão)
+    - cron: "0 6,11,15,23 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: buscar-precos
+  cancel-in-progress: false
+
+jobs:
+  buscar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependências
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install --with-deps chromium
+
+      - name: Rodar coleta de preços
+        working-directory: scripts
+        run: python main.py
+
+      - name: Mostrar resumo no job
+        if: always()
+        run: |
+          if [ -f scripts/job_summary.md ]; then
+            cat scripts/job_summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Subir artifacts de debug (se houver falha em alguma fonte)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-scraping-${{ github.run_id }}
+          path: scripts/artifacts/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Commit e push (se houve mudanças)
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- historico_precos.csv resumo.md; then
+            echo "Sem mudanças para commitar."
+          else
+            git add historico_precos.csv resumo.md
+            git commit -m "Registro de preço GYN-FLN (scraping real) - $(date -u +'%Y-%m-%d %H:%M UTC')"
+            git push
+          fi
