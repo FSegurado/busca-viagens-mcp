@@ -1,11 +1,11 @@
 # Resumo — Monitoramento de Preços GYN → FLN (26 a 30/11/2026, 2 adultos)
 
-- **Preço médio por adulto (histórico completo):** R$ 457,95
+- **Preço médio por adulto (histórico completo):** R$ 458,25
 - **Preço mais baixo já encontrado:** R$ 340,00 (em 2026-09-16) — [ver oferta/busca](https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL)
 - **Preço mais alto já encontrado:** R$ 1.674,00 (em 2026-10-06)
-- **Número total de consultas registradas:** 120
+- **Número total de consultas registradas:** 121
 - **Link da consulta mais recente:** https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL
-- **Última atualização:** 2026-10-22 12:45 (horário de Brasília)
+- **Última atualização:** 2026-10-23 07:44 (horário de Brasília)
 
 ## Meta do usuário
 
