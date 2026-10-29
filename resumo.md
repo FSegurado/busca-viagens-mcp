@@ -1,15 +1,15 @@
 # Resumo — Monitoramento de Preços GYN → FLN (26 a 30/11/2026, 2 adultos)
 
-- **Preço médio por adulto (histórico completo):** R$ 454,84
+- **Preço médio por adulto (histórico completo):** R$ 454,91
 - **Preço mais baixo já encontrado:** R$ 340,00 (em 2026-09-16) — [ver oferta/busca](https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL)
 - **Preço mais alto já encontrado:** R$ 1.674,00 (em 2026-10-06)
-- **Número total de consultas registradas:** 131
+- **Número total de consultas registradas:** 132
 - **Link da consulta mais recente:** https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL
-- **Última atualização:** 2026-10-27 16:45 (horário de Brasília)
+- **Última atualização:** 2026-10-29 08:59 (horário de Brasília)
 
 ## Meta do usuário
 
-🎯 **META ATINGIDA nesta consulta**: R$ 444,00 por adulto, abaixo dos R$ 800,00 desejados! Companhia: Não especificado (ver link). Fonte: Google Flights (scraping real). Link: https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL
+🎯 **META ATINGIDA nesta consulta**: R$ 464,00 por adulto, abaixo dos R$ 800,00 desejados! Companhia: Não especificado (ver link). Fonte: Google Flights (scraping real). Link: https://www.google.com/travel/flights?tfs=CBwQARocagcIARIDR1lOchEIAxINL2cvMTFiYzZ4bHBwZBocahEIAxINL2cvMTFiYzZ4bHBwZHIHCAESA0dZTkABQAFIAXABggELCP___________wGYAQE&tfu=KgIIAw&hl=en&gl=BR&curr=BRL
 
 Dados coletados via **scraping real (Playwright)** rodando em GitHub Actions, direto do Google Flights e/ou Decolar — sem intermediação de busca textual. Consulte a coluna `observacoes` no CSV para detalhes de cada execução (inclusive quando alguma fonte falhou).
 
